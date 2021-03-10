@@ -173,3 +173,92 @@ class QLinearMatMulFunction(Function):
             output_zero_point,
             out_shape):
         return torch.empty(out_shape).type(output_zero_point.dtype)
+
+
+class ConvIntegerFunction(Function):
+
+    @staticmethod
+    def symbolic(
+            g,
+            int_x,
+            int_weight,
+            input_zero_point,
+            weight_zero_point,
+            int_bias,
+            out_shape,
+            kernel_size,
+            padding,
+            stride,
+            groups,
+            dilation):
+        if int_bias is not None:
+            ret = g.op(
+                'ConvInteger',
+                int_x,
+                int_weight,
+                input_zero_point,
+                weight_zero_point,
+                int_bias,
+                kernel_shape_i=kernel_size,
+                pads_i=padding,
+                strides_i=stride,
+                group_i=groups,
+                dilations_i=dilation)
+        else:
+            ret = g.op(
+                'ConvInteger',
+                int_x,
+                int_weight,
+                input_zero_point,
+                weight_zero_point,
+                kernel_shape_i=kernel_size,
+                pads_i=padding,
+                strides_i=stride,
+                group_i=groups,
+                dilations_i=dilation)
+        return ret
+
+    @staticmethod
+    def forward(
+            ctx,
+            int_x,
+            int_weight,
+            input_zero_point,
+            weight_zero_point,
+            bias,
+            out_shape,
+            kernel_size,
+            padding,
+            stride,
+            groups,
+            dilation):
+        return torch.empty(out_shape).int()
+
+
+class IntegerMatMulFunction(Function):
+
+    @staticmethod
+    def symbolic(
+            g,
+            int_x,
+            int_weight,
+            input_zero_point,
+            weight_zero_point,
+            out_shape):
+        ret = g.op(
+            'IntegerMatMul',
+            int_x,
+            int_weight,
+            input_zero_point,
+            weight_zero_point)
+        return ret
+
+    @staticmethod
+    def forward(
+            ctx,
+            int_x,
+            int_weight,
+            input_zero_point,
+            weight_zero_point,
+            out_shape):
+        return torch.empty(out_shape).int()

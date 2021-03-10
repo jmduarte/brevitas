@@ -4,7 +4,7 @@ from torch import Tensor
 from ..base import BaseHandler
 
 
-class Validate8BitHandler(BaseHandler):
+class ValidateBitWidthHandler(BaseHandler):
 
     @classmethod
     def validate_8b_bit_width(cls, bit_width: Tensor):
@@ -15,6 +15,14 @@ class Validate8BitHandler(BaseHandler):
             raise RuntimeError("Only 8b bit width supported")
         return bit_width
 
+    @classmethod
+    def validate_le_32b_bit_width(cls, bit_width: Tensor):
+        if bit_width is None:
+            raise RuntimeError("Bit width cannot be None")
+        bit_width = int(bit_width.item())
+        if bit_width > 32:
+            raise RuntimeError("Only <=32b bit width supported")
+        return bit_width
 
 class TypedZeroPointHandler(BaseHandler):
 

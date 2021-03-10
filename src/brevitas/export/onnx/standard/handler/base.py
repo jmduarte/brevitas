@@ -6,11 +6,11 @@ from torch import Tensor
 
 
 from brevitas.export.onnx.handler import ONNXBaseHandler
-from brevitas.export.common.handler import Validate8BitHandler, TypedZeroPointHandler
+from brevitas.export.common.handler import ValidateBitWidthHandler, TypedZeroPointHandler
 from ..function import QuantizeLinearFunction, DequantizeLinearFunction
 
 
-class StdONNXQuantLayerHandler(Validate8BitHandler, TypedZeroPointHandler, ONNXBaseHandler, ABC):
+class StdONNXQuantLayerHandler(ValidateBitWidthHandler, TypedZeroPointHandler, ONNXBaseHandler, ABC):
 
     @abstractmethod
     def op_symbolic_execution(self, inp: Tensor):

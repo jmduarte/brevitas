@@ -71,6 +71,37 @@ def test_standard_onnx_quant_conv():
     assert is_brevitas_ort_close(model, inp, export_name, atol=atol)
 
 
+def test_standard_onnx_int_conv():
+    FEATURES = 7
+    IN_SIZE = (1, IN_CH, FEATURES, FEATURES)
+    KERNEL_SIZE = 3
+
+    class Model(torch.nn.Module):
+
+        def __init__(self):
+            super().__init__()
+            self.conv1 = QuantConv2d(
+                out_channels=OUT_CH,
+                in_channels=IN_CH,
+                kernel_size=KERNEL_SIZE,
+                bias=False,
+                weight_quant=ShiftedUint8WeightPerTensorFloat,
+                input_quant=ShiftedUint8ActPerTensorFloat,
+                return_quant_tensor=False)
+            self.conv1.weight.data.uniform_(-1.0, 1.0)
+
+        def forward(self, x):
+            return self.conv1(x)
+
+    export_name = 'intconv.onnx'
+    inp = gen_linspaced_data(reduce(mul, IN_SIZE), -1, 1).reshape(IN_SIZE)
+    model = Model()
+    model(torch.from_numpy(inp))  # accumulate scale factors
+    model.eval()
+    #atol = model.conv1.quant_output_scale().item() * TOLERANCE
+    assert is_brevitas_ort_close(model, inp, export_name)
+
+
 def test_standard_onnx_quant_identity_export():
     IN_SIZE = (1, OUT_CH, IN_CH, IN_CH)
 

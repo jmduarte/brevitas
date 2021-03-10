@@ -9,6 +9,7 @@ from brevitas.nn import QuantConv2d, QuantConv1d, QuantLinear
 from brevitas.export.onnx.handler import Kernel2dApplHandler, Kernel1dApplHandler
 from ..function import QuantizeLinearFunction, DequantizeLinearFunction
 from ..function import QLinearConvFunction, QLinearMatMulFunction
+from ..function import ConvIntegerFunction
 from .base import StdONNXQuantLayerHandler
 
 
@@ -33,10 +34,12 @@ class StdONNXQuantWBIOLHandler(StdONNXQuantLayerHandler, ABC):
     @classmethod
     def validate(cls, module: QuantWBIOL, requires_quant_bias=True):
         assert module.is_weight_quant_enabled
-        assert module.is_output_quant_enabled
         cls.validate_8b_bit_width(module.quant_weight_bit_width())
         cls.validate_8b_bit_width(module.quant_input_bit_width())
-        cls.validate_8b_bit_width(module.quant_output_bit_width())
+        if module.is_output_quant_enabled:
+            cls.validate_8b_bit_width(module.quant_output_bit_width())
+        else:
+            cls.validate_le_32b_bit_width(module.quant_output_bit_width())
         if module.bias is not None and requires_quant_bias:
             assert module.is_bias_quant_enabled
             assert module.is_quant_bias_signed
@@ -119,25 +122,52 @@ class StdONNXQuantLinearHandler(StdONNXQuantWBIOLHandler):
 class StdONNXQuantConvNdHandler(StdONNXQuantWBIOLHandler, ABC):
 
     def op_symbolic_kwargs(self, module: Union[QuantConv1d, QuantConv2d]):
-        conv_symbolic_kwargs = {
-            'input_scale': module.quant_input_scale(),
-            'input_zero_point': self.quant_input_zero_point(module),
-            'int_weight': self.int_weight(module),
-            'weight_scale': module.quant_weight_scale(),
-            'weight_zero_point': self.quant_weight_zero_point(module),
-            'output_scale': module.quant_output_scale(),
-            'output_zero_point': self.quant_output_zero_point(module),
-            'int_bias': self.int_bias(module),
-            'out_shape': self.quant_output_shape(module),
-            'kernel_size': list(module.kernel_size),
-            'padding': self.padding(module),
-            'stride': self.stride(module),
-            'groups': module.groups,
-            'dilation': self.dilation(module)}
+        input_zero_point = self.quant_input_zero_point(module)
+        int_weight = self.int_weight(module)
+        weight_zero_point = self.quant_weight_zero_point(module)
+        int_bias = self.int_bias(module)
+        out_shape = self.quant_output_shape(module)
+        kernel_size = list(module.kernel_size)
+        padding = self.padding(module)
+        stride = self.stride(module)
+        groups = module.groups
+        dilation = self.dilation(module)
+        if module.is_output_quant_enabled:
+            conv_symbolic_kwargs = {
+                'input_scale': module.quant_input_scale(),
+                'input_zero_point': input_zero_point,
+                'int_weight': int_weight,
+                'weight_scale': module.quant_weight_scale(),
+                'weight_zero_point': weight_zero_point,
+                'output_scale': module.quant_output_scale(),
+                'output_zero_point': self.quant_output_zero_point(module),
+                'int_bias': int_bias,
+                'out_shape': out_shape,
+                'kernel_size': kernel_size,
+                'padding': padding,
+                'stride': stride,
+                'groups': groups,
+                'dilation': dilation}
+        else:
+            conv_symbolic_kwargs = {
+                'int_weight': int_weight,
+                'input_zero_point': input_zero_point,
+                'weight_zero_point': weight_zero_point,
+                'int_bias': int_bias,
+                'out_shape': out_shape,
+                'kernel_size': kernel_size,
+                'padding': padding,
+                'stride': stride,
+                'groups': groups,
+                'dilation': dilation}
         return conv_symbolic_kwargs
 
     def prepare_for_export(self, module: Union[QuantConv1d, QuantConv2d]):
         self.validate(module)
+        if module.is_output_quant_enabled:
+            self.op_symbolic_impl = QLinearConvFunction.apply
+        else:
+            self.op_symbolic_impl = ConvIntegerFunction.apply
 
         op_symbolic_kwargs = self.op_symbolic_kwargs(module)
         if not module.return_quant_tensor:
@@ -158,7 +188,7 @@ class StdONNXQuantConvNdHandler(StdONNXQuantWBIOLHandler, ABC):
 
     def op_symbolic_execution(self, inp: Tensor):
         conv_symbolic_kwargs = self.symbolic_kwargs['op_symbolic_kwargs']
-        out = QLinearConvFunction.apply(inp, *conv_symbolic_kwargs.values())
+        out = self.op_symbolic_impl(inp, *conv_symbolic_kwargs.values())
         return out
 
     def output_symbolic_execution(self, out: Tensor):
